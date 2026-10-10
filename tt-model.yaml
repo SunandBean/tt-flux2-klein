@@ -1,0 +1,63 @@
+schema: "5.1"
+repo: sunandbean/flux2-klein-p100a
+name: flux2-klein-p100a
+weights:
+  repo: black-forest-labs/FLUX.2-klein-4B
+  revision: e7b7dc27f91deacad38e78976d1f2b499d76a294
+kind: tt-dit-server
+arch: blackhole
+
+image:
+  registry: hf
+
+source:
+  tt_metal: {repo: https://github.com/tenstorrent/tt-metal, ref: v0.80.0-dev20260921}
+  code:
+    # Every port in this family reaches tt-metal for `models.tt_dit.utils.matmul.get_matmul_config`.
+    # The module guards that import and falls back to None, so an under-listed allowlist builds and
+    # loads cleanly and only fails on the first matmul -- list it rather than discover that at serve.
+    - models/common
+    - models/tt_dit
+  extra_code:
+    - root: {repo: https://github.com/SunandBean/tt-flux2-klein, ref: v0.1.2}
+      paths: [tt_flux2_klein]
+  ubuntu: "22.04"
+  python: "3.12"
+
+runtime:
+  app: tt_flux2_klein.server:app
+  mesh_shape_env: KLEIN_MESH_SHAPE
+  packages:
+    - diffusers
+    - transformers
+    - safetensors
+    - huggingface_hub
+    - numpy
+    - loguru
+    - typing_extensions
+
+serve:
+  port: 8000
+  hardware: p100a
+  mesh_device: P100
+  env:
+    ARCH_NAME: blackhole
+    TT_METAL_OPERATION_TIMEOUT_SECONDS: "600.0"
+
+verify:
+  - "import tt_flux2_klein.server as s; assert s.app"
+
+card:
+  description: >
+    FLUX.2-klein-4B, a 4-step distilled rectified-flow model for text-to-image, editing and
+    reference-guided generation, ported to one Tenstorrent Blackhole p100a. Weights are
+    Apache-2.0 from black-forest-labs/FLUX.2-klein-4B and are never redistributed here.
+  quickstart: |
+    ### Request shape
+
+    `POST /predict` takes `{"prompt": str, "images": [b64], "width": int, "height": int,
+    "seed": int}` and returns `{"image": base64 PNG, "width", "height", "model", "license",
+    "seed", "num_steps", "reference_count", "timing_ms"}`. `images` is optional: none for
+    text-to-image, up to three for an edit or a reference. klein is itself distilled to
+    **4 steps**; any other step count is a 422. A constrained edit can over-apply -- see
+    *Caveats* on the model card.
